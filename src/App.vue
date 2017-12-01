@@ -1,58 +1,55 @@
 <template>
   <div id="app">
-    <form-wizard color="#4fc6f9">
+    <form-wizard   @on-loading="setLoading"  color="#4fc6f9">
+
       <h2 slot="title">TCIA Submission Tool</h2>
+
       <tab-content title="Configure" icon="ti-map" :before-change="importSubmissionTemplate">
-        <p>Fill out <a class="downloadable" href='/src/assets/tcia-submission-template.xlsx'>this Excel template</a> and save it on your computer.
+        <p>Fill out <a class="link" href='/src/assets/tcia-submission-template.xlsx'>this Excel template</a> and save it on your computer.
           Our software will use this information to determine which Collection your patients belong in,
           and to replace your patient IDs and dates with anonymized ones.</p>
-
         <p>After filling out the template, import the file: <input type="file" accept=".xlsx" id="templateFile" /></p>
-
       </tab-content>
-      <tab-content title="Prepare Data" icon="ti-files" :before-change="copyImagesIntoPipeline">
 
+      <tab-content title="Prepare Data" icon="ti-files" :before-change="copyIntoPipelineAndDeidentify">
         <p>{{serverSpace}}</p>
-
         <p>Where is the DICOM data you’d like to submit?</p>
-
         <div class="center">
           <div style="float:left; width:2em">
             <button tabindex="-1" type="button" class="up-btn ti-arrow-up" v-on:click="upDirectoryClick">  Up </button>
           </div>
         </div>
         <v-jstree :data="fileSystem" allow-batch  v-on:dblclick.native="directoryDoubleClick" @item-click="directoryItemClick"></v-jstree>
-
-
-
-
+        <p>Click 'Next' to import and anonymize the DICOM data.</p>
        <!-- TODO:
           See summary of selected data.  I don't believe this is currently possible.
         -->
-
-        <button slot="next">Import</button>
       </tab-content>
 
       <tab-content title="Process & Review Data" icon="ti-search">
-        <p style="color: red; font-style: italic">TODO: Progress bar or spinner</p>
+        <p>Your data has been processed. Review the results before transferring to TCIA.</p>
 
         <ul>
           <li>Patients Processed:  100</li>
           <li>Studies Processed:  5 </li>
           <li>Series Process:  10 </li>
-          <li>Quarantined Series: 3 </li>
+          <li><a target="_blank" class="link" href="/quarantines?p=1&s=2">Quarantine Manager</a></li>
         </ul>
       </tab-content>
 
-      <tab-content title="Transfer to TCIA" icon="ti-export">
+      <tab-content title="Transfer to TCIA" icon="ti-export" :before-change="transferToTCIA">
         <p>Your data is now de-identified. Click 'Next' to begin transmitting to TCIA.</p>
+
+        <p>Do we want a treeview picker here to potentially select a subset of data to transfer?</p>
       </tab-content>
 
       <tab-content title="Finished" icon="ti-check">
         <p>Thanks for submitting your data.</p>
-        <p><a>Download the manifest</a> for your records.</p>
+        <p><a class="link">Download the manifest</a> for your records.</p>
 
       </tab-content>
+
+      <div class="loader" v-if="loadingWizard"></div>
     </form-wizard>
   </div>
 </template>
@@ -140,25 +137,39 @@ export default {
 
       return obj;
     },
-    copyImagesIntoPipeline: function () {
+    copyIntoPipelineAndDeidentify: function () {
+
       this.$http.get('/Collection/submitFile?file=' + this.currentFileSystemPath).then(response => {
-        alert(response.body);
+        console.log("files submitted " + response.body)
+        //In pipeline.  Now de-identify
+        this.$http.get('/Collection/anonymize?file=DirectoryStorageService').then(response =>{
+          console.log("finished anonymizing " + response.body);
+
+          //get the anonymized list
+          this.$http.get('Collection/listAnonymized').then(response =>{
+            var xml = this.parser.parseFromString(response.body, "text/xml");
+            console.log(response.body);
+          }, response=> {
+            alert("There was a problem retrieving the anonymized list.")
+          });
+
+        }, response => {
+          alert ("Error anonymizing files.")
+        });
+
       }, response => {
         alert("There was a problem copying the files into the import pipeline.")
       });
       return true;
     },
-    dicomCollectionList: function(){
-      alert("dicomeCollectionList method");
-      return true;
-    },
     transferToTCIA: function () {
-      var filepath = "TODO";
+      var filepath = "DirectoryStorageService";
       this.$http.get('/Collection/export?file='+filepath).then(response => {
-
+        console.log("export started " + response.body);
       }, response => {
         alert("There was a problem exporting the files.")
       });
+      return true;
     },
     directoryItemClick: function (node) {
       this.currentFileSystemPath = node.model.path;
@@ -167,6 +178,9 @@ export default {
     directoryDoubleClick: function() {
       if (this.currentPathIsDir)
         this.updateFileSystemTree(this.currentFileSystemPath);
+    },
+    upDirectoryClick: function(){
+      this.updateFileSystemTree(this.fileSystem[0].parent);
     },
     getAvailableServerSpace: function () {
       // <space partition="D:\" available="434932" units="MB"/>
@@ -181,27 +195,13 @@ export default {
         alert ("There was a problem finding the available server space.");
       });
     },
-    upDirectoryClick: function(){
-      this.updateFileSystemTree(this.fileSystem[0].parent);
-    },
-    testMethod: function(){
-      var xmlText = "<dir  name=\"Users\" parent=\"/\"> " +
-        "<dir name=\"juliefrund\"/>  " +
-        "<dir name=\"Shared\"/> " +
-        "<dir name=\"wssupport\"/> " +
-        "<file name=\".localized\"/> " +
-        "</dir>";
-
-      var parser = new DOMParser();
-      var xml = parser.parseFromString(xmlText, "text/xml");
-      var json = this.fileSystemXmlToJson(xml);
-      this.fileSystem = json.children;
-
-      return true;
+    setLoading: function(value) {
+      this.loadingWizard = value
     }
   },
   data () {
     return {
+      loadingWizard: false,
       parser: new DOMParser(),
       serverSpace: "0",
       currentFileSystemPath: "/Users",
@@ -242,7 +242,7 @@ li {
   margin: 0 10px;
 }
 
-.downloadable{
+.link{
   color: #FFDC00
 }
 
