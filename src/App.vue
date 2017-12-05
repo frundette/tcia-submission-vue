@@ -11,7 +11,7 @@
         <p>After filling out the template, import the file: <input type="file" accept=".xlsx" id="templateFile" /></p>
       </tab-content>
 
-      <tab-content title="Prepare Data" icon="ti-files" :before-change="copyIntoPipelineAndDeidentify">
+      <tab-content title="Import Data" icon="ti-files" :before-change="copyIntoImportPipeline">
         <p>{{serverSpace}}</p>
         <p>Where is the DICOM data you’d like to submit?</p>
         <div class="center">
@@ -20,14 +20,24 @@
           </div>
         </div>
         <v-jstree :data="fileSystem" allow-batch  v-on:dblclick.native="directoryDoubleClick" @item-click="directoryItemClick"></v-jstree>
-        <p>Click 'Next' to import and anonymize the DICOM data.</p>
+        <p>Click 'Next' to import the DICOM data.</p>
        <!-- TODO:
           See summary of selected data.  I don't believe this is currently possible.
         -->
       </tab-content>
 
-      <tab-content title="Process & Review Data" icon="ti-search">
-        <p>Your data has been processed. Review the results before transferring to TCIA.</p>
+      <tab-content title="Select Data" icon="ti-search" :before-change="anonymize">
+        <p>Your data has been imported. </p>
+
+        <p> TODO: NOW Choose which Studies or Patients to Anonymize </p>
+
+        <p> TODO: Make button say 'Anonymize</p>
+      </tab-content>
+
+      <tab-content title="Review" icon="ti-export" :before-change="transferToTCIA">
+        <p>Your data has been anonymized.</p>
+
+        <p>TODO: Show anonymization mapping.  JP to provide function to do this.</p>
 
         <ul>
           <li>Patients Processed:  100</li>
@@ -35,12 +45,8 @@
           <li>Series Process:  10 </li>
           <li><a target="_blank" class="link" href="/quarantines?p=1&s=2">Quarantine Manager</a></li>
         </ul>
-      </tab-content>
 
-      <tab-content title="Transfer to TCIA" icon="ti-export" :before-change="transferToTCIA">
-        <p>Your data is now de-identified. Click 'Next' to begin transmitting to TCIA.</p>
-
-        <p>Do we want a treeview picker here to potentially select a subset of data to transfer?</p>
+        <p>TODO: Button text says 'Export'</p>
       </tab-content>
 
       <tab-content title="Finished" icon="ti-check">
@@ -114,7 +120,7 @@ export default {
             (obj["path"] += "/");
           obj["path"] += obj["text"];
         }
-        else if (parent.length > 0) {
+        else {
           obj["path"] = parent + "/" + obj["text"];
         }
 
@@ -137,29 +143,31 @@ export default {
 
       return obj;
     },
-    copyIntoPipelineAndDeidentify: function () {
-
+    copyIntoImportPipeline: function () {
       this.$http.get('/Collection/submitFile?file=' + this.currentFileSystemPath).then(response => {
         console.log("files submitted " + response.body)
-        //In pipeline.  Now de-identify
-        this.$http.get('/Collection/anonymize?file=DirectoryStorageService').then(response =>{
-          console.log("finished anonymizing " + response.body);
-
-          //get the anonymized list
-          this.$http.get('Collection/listAnonymized').then(response =>{
-            var xml = this.parser.parseFromString(response.body, "text/xml");
-            console.log(response.body);
-          }, response=> {
-            alert("There was a problem retrieving the anonymized list.")
-          });
-
-        }, response => {
-          alert ("Error anonymizing files.")
-        });
 
       }, response => {
         alert("There was a problem copying the files into the import pipeline.")
       });
+      return true;
+    },
+    anonymize: function(){
+      this.$http.get('/Collection/anonymize?file=DirectoryStorageService').then(response =>{
+        console.log("finished anonymizing " + response.body);
+
+        //get the anonymized list
+        this.$http.get('Collection/listAnonymized').then(response =>{
+          var xml = this.parser.parseFromString(response.body, "text/xml");
+          console.log(response.body);
+        }, response=> {
+          alert("There was a problem retrieving the anonymized list.")
+        });
+
+      }, response => {
+        alert ("Error anonymizing files.")
+      });
+
       return true;
     },
     transferToTCIA: function () {
@@ -204,7 +212,7 @@ export default {
       loadingWizard: false,
       parser: new DOMParser(),
       serverSpace: "0",
-      currentFileSystemPath: "/Users",
+      currentFileSystemPath: "/",
       currentPathIsDir: true,
       fileSystem: [
         {
