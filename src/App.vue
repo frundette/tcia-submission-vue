@@ -21,15 +21,12 @@
         </div>
         <v-jstree :data="fileSystem" allow-batch  v-on:dblclick.native="directoryDoubleClick" @item-click="directoryItemClick"></v-jstree>
         <p>Click 'Next' to import the DICOM data.</p>
-       <!-- TODO:
-          See summary of selected data.  I don't believe this is currently possible.
-        -->
       </tab-content>
 
-      <tab-content title="Select Data" icon="ti-search" :before-change="anonymize">
-        <p>Your data has been imported. </p>
+      <tab-content title="Select Data" icon="ti-target" :before-change="anonymize">
+        <p>Your data has been imported. Now choose which Studies or Patients to anonymize </p>
 
-        <p> TODO: NOW Choose which Studies or Patients to Anonymize </p>
+        <v-jstree :data="inImportPipeline" show-checkbox multiple></v-jstree>
 
         <p> TODO: Make button say 'Anonymize</p>
       </tab-content>
@@ -61,6 +58,7 @@
 </template>
 
 <script>
+
 export default {
   name: 'app',
   methods: {
@@ -85,7 +83,6 @@ export default {
     },
     updateFileSystemTree: function(path){
       this.$http.get('/Collection/listFiles?dir='+path).then(response => {
-        //var parser = new DOMParser();
         var xml = this.parser.parseFromString(response.body, "text/xml");
         var json = this.fileSystemXmlToJson(xml);
         this.fileSystem = json.children;
@@ -145,17 +142,71 @@ export default {
     },
     copyIntoImportPipeline: function () {
       this.$http.get('/Collection/submitFile?file=' + this.currentFileSystemPath).then(response => {
-        console.log("files submitted " + response.body)
-
+        console.log("files submitted " + response.body);
+        this.updateImportPipelineTree();
       }, response => {
         alert("There was a problem copying the files into the import pipeline.")
       });
       return true;
     },
+    updateImportPipelineTree: function(){
+      this.$http.get('/Collection/listImport').then(response => {
+        var xml = this.parser.parseFromString(response.body, "text/xml");
+        var dirStorageXML = xml.getElementsByTagName("DicomFiles")[0].childNodes[0];
+        var json = this.importPipelineXmlToJson(dirStorageXML);
+        console.log(json);
+        this.inImportPipeline = json.children;
+      }, response =>{
+        alert("There was a problem retrieving the list of files in the import pipeline.");
+      })
+    },
+    importPipelineXmlToJson: function(xml, parent){
+      var obj={};
+
+      if (xml.nodeType == 9 || xml.nodeName == "DicomFiles"){
+        obj["children"] = [];
+        for (var j = 0 ; j < xml.childNodes.length; j++){
+          obj["children"].push(this.importPipelineXmlToJson(xml.childNodes.item(j)));
+        }
+      }
+      else if (xml.nodeName == "dir") {
+        obj["type"] = xml.nodeName;
+        obj["text"] = xml.getAttribute('name');
+        obj["selected"] = true;
+        if(xml.getAttribute('parent')) {
+          obj["parent"] = xml.getAttribute('parent');
+          obj["path"] = xml.getAttribute('parent');
+          if (obj["path"] != "/")
+            (obj["path"] += "/");
+          obj["path"] += obj["text"];
+        }
+        else {
+          obj["path"] = parent + "/" + obj["text"];
+        }
+
+        if (xml.getAttribute('name').match(/^\d{8}$/)){
+          obj["icon"] = "ti-calendar";
+        }
+        else {
+          obj["opened"] = true;
+          obj["icon"] = "ti-user";
+          if (xml.hasChildNodes()) {
+            obj["children"] = [];
+            for (var i = 0; i < xml.childNodes.length; i++) {
+              var item = xml.childNodes.item(i);
+              if (item.nodeName == "dir")
+                obj["children"].push(this.importPipelineXmlToJson(item, obj["path"]));
+            }
+          }
+        }
+
+      }
+
+      return obj;
+    },
     anonymize: function(){
       this.$http.get('/Collection/anonymize?file=DirectoryStorageService').then(response =>{
-        console.log("finished anonymizing " + response.body);
-
+        
         //get the anonymized list
         this.$http.get('Collection/listAnonymized').then(response =>{
           var xml = this.parser.parseFromString(response.body, "text/xml");
@@ -219,6 +270,11 @@ export default {
           "text": "Retrieving directory information",
           "opened": true,
           "icon": "ti-alert"
+        }],
+      inImportPipeline: [{
+        "text": "Retrieving directory information",
+        "opened": true,
+        "icon": "ti-alert"
         }]
       }
     }
