@@ -2,7 +2,7 @@
 
 > A Vue.js project for submitting DICOM images to the Cancer Imaging Archive.
 
-##To use with CTP
+## To use with CTP
 > Copy the dist directory, src directory, and tcia-wizard.html into CTP's ROOT folder.
 
 

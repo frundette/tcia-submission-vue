@@ -1,6 +1,6 @@
 <template>
   <div id="app">
-    <form-wizard   @on-loading="setLoading"  color="#4fc6f9">
+    <form-wizard  color="#4fc6f9">
 
       <h2 slot="title">TCIA Submission Tool</h2>
 
@@ -20,15 +20,15 @@
           </div>
         </div>
         <v-jstree :data="fileSystem" allow-batch  v-on:dblclick.native="directoryDoubleClick" @item-click="directoryItemClick"></v-jstree>
-        <p>Click 'Next' to import the DICOM data.</p>
       </tab-content>
 
       <tab-content title="Select Data" icon="ti-target" :before-change="anonymize">
-        <p>Your data has been imported. Now choose which Studies or Patients to anonymize </p>
-
+        <p>Now choose which Studies or Patients to anonymize </p>
         <v-jstree :data="inImportPipeline" show-checkbox multiple></v-jstree>
-
-        <p> TODO: Make button say 'Anonymize</p>
+        <div v-show="loading" class="center">
+          <div class="loader"></div>
+          <p>Anonymizing...</p>
+        </div>
       </tab-content>
 
       <tab-content title="Review" icon="ti-export" :before-change="transferToTCIA">
@@ -36,14 +36,20 @@
 
         <p>TODO: Show anonymization mapping.  JP to provide function to do this.</p>
 
-        <ul>
-          <li>Patients Processed:  100</li>
-          <li>Studies Processed:  5 </li>
-          <li>Series Process:  10 </li>
-          <li><a target="_blank" class="link" href="/quarantines?p=1&s=2">Quarantine Manager</a></li>
+        <ul class="anonymizedSummary">
+          <li>
+            <div class="ti-user"> Patients Processed: {{patientsAnonymized}}</div>
+          </li>
+          <li>
+            <div class="ti-calendar"> Studies Processed: {{studiesAnonymized}}</div>
+          </li>
+          <li>
+            <div class="ti-package"> Series Processed: {{seriesAnonymized}}</div>
+          </li>
+          <li>
+            <div class="ti-na"><a target="_blank" class="link" href="/quarantines?p=1&s=2"> Quarantine Manager</a></div>
+          </li>
         </ul>
-
-        <p>TODO: Button text says 'Export'</p>
       </tab-content>
 
       <tab-content title="Finished" icon="ti-check">
@@ -52,12 +58,13 @@
 
       </tab-content>
 
-      <div class="loader" v-if="loadingWizard"></div>
     </form-wizard>
   </div>
 </template>
 
+
 <script>
+  var parser = new DOMParser()
 
 export default {
   name: 'app',
@@ -79,11 +86,12 @@ export default {
         alert("There was a problem communicating with CTP.");
       });
 
+      this.updateNextButtonText("Import");
       return true;
     },
     updateFileSystemTree: function(path){
       this.$http.get('/Collection/listFiles?dir='+path).then(response => {
-        var xml = this.parser.parseFromString(response.body, "text/xml");
+        var xml = parser.parseFromString(response.body, "text/xml");
         var json = this.fileSystemXmlToJson(xml);
         this.fileSystem = json.children;
       },response => {
@@ -147,11 +155,13 @@ export default {
       }, response => {
         alert("There was a problem copying the files into the import pipeline.")
       });
+
+      this.updateNextButtonText('Anonymize');
       return true;
     },
     updateImportPipelineTree: function(){
       this.$http.get('/Collection/listImport').then(response => {
-        var xml = this.parser.parseFromString(response.body, "text/xml");
+        var xml = parser.parseFromString(response.body, "text/xml");
         var dirStorageXML = xml.getElementsByTagName("DicomFiles")[0].childNodes[0];
         var json = this.importPipelineXmlToJson(dirStorageXML);
         console.log(json);
@@ -205,21 +215,80 @@ export default {
       return obj;
     },
     anonymize: function(){
-      this.$http.get('/Collection/anonymize?file=DirectoryStorageService').then(response =>{
-        
-        //get the anonymized list
-        this.$http.get('Collection/listAnonymized').then(response =>{
-          var xml = this.parser.parseFromString(response.body, "text/xml");
-          console.log(response.body);
-        }, response=> {
-          alert("There was a problem retrieving the anonymized list.")
-        });
 
-      }, response => {
-        alert ("Error anonymizing files.")
-      });
+      this.setLoading(true);
+
+      //Get the selected items
+      var pathsToAnonymize = [];
+      //get each selected item from the tree view
+      for (var i = 0; i < this.inImportPipeline.length; i++){
+        var patient = this.inImportPipeline[i];
+        if(patient.selected) {
+          console.log('anonymize ' + patient.path);
+          pathsToAnonymize.push(patient.path);
+        }
+        else{
+          //check if any children are selected
+          for(var j = 0; j < patient.children.length; j++){
+            var studyDate = patient.children[j];
+            if (studyDate.selected) {
+              console.log('anonymize ' + studyDate.path);
+              pathsToAnonymize.push(studyDate.path);
+            }
+          }
+        }
+      }
+
+      //Pass each selected path to the anonymizer function
+      for (var k = 0; k < pathsToAnonymize.length; k++)
+      {
+        var path = pathsToAnonymize[k];
+        var relativePath = path.substring(path.indexOf("DirectoryStorageService/"));
+        this.$http.get('/Collection/anonymize?file=' + relativePath).then(response =>{
+          console.log('anonymizing ' + relativePath);
+        }, response => {
+          alert("There was an error anonymizing " + relativePath);
+        });
+      }
+
+      //Poll to see if everything selected has been anonymized
+      while (this.isAnonymizingFinished() == false) {
+        console.log("Still anonymizing...")
+      }
+      this.setLoading(false);
+
+      //Get the list of images that have been anonymized
+      this.updateAnonymizationNumbers();
+
+      this.updateNextButtonText('Export');
+      return true;
+    },
+    isAnonymizingFinished: function(){
+
+      //TODO:  How will we know that the anonymization is complete?
+      //John is considering if there is another call he can provide.
+
+      var millis = 3000;
+      var date = Date.now();
+      var curDate = null;
+      do {
+        curDate = Date.now();
+      } while (curDate-date < millis);
 
       return true;
+    },
+    updateAnonymizationNumbers: function () {
+      this.$http.get('Collection/listAnonymized').then(response => {
+        var xml = parser.parseFromString(response.body, "text/xml");
+        var dicomObjects = xml.getElementsByTagName("DicomObject");
+
+        for (var i= 0; i< dicomObjects.length; i++) {
+          console.log(dicomObjects[i].getAttribute('name'));
+        }
+
+      }, response => {
+        alert("There was a problem retrieving the anonymized list.");
+      });
     },
     transferToTCIA: function () {
       var filepath = "DirectoryStorageService";
@@ -228,6 +297,8 @@ export default {
       }, response => {
         alert("There was a problem exporting the files.")
       });
+
+      this.updateNextButtonText('Finished');
       return true;
     },
     directoryItemClick: function (node) {
@@ -244,7 +315,7 @@ export default {
     getAvailableServerSpace: function () {
       // <space partition="D:\" available="434932" units="MB"/>
       this.$http.get('/Collection/getAvailableSpace').then(response => {
-        var xml = this.parser.parseFromString(response.body, "text/xml");
+        var xml = parser.parseFromString(response.body, "text/xml");
         var partition = xml.getElementsByTagName("space")[0].getAttribute("partition");
         var available = xml.getElementsByTagName("space")[0].getAttribute("available");
         var units = xml.getElementsByTagName("space")[0].getAttribute("units");
@@ -255,15 +326,24 @@ export default {
       });
     },
     setLoading: function(value) {
-      this.loadingWizard = value
+      this.loading = value
+    },
+    updateNextButtonText: function(text){
+      //change 'NEXT' button text
+      var footerRight = document.getElementsByClassName('wizard-footer-right')[0];
+      var spanTag = footerRight.getElementsByTagName('span')[0];
+      var button = spanTag.getElementsByClassName('wizard-btn')[0];
+      button.innerText = text;
     }
   },
-  data () {
+  data: function() {
     return {
-      loadingWizard: false,
-      parser: new DOMParser(),
+      loading: false,
       serverSpace: "0",
       currentFileSystemPath: "/",
+      patientsAnonymized: 5,
+      studiesAnonymized: 4,
+      seriesAnonymized: 10,
       currentPathIsDir: true,
       fileSystem: [
         {
@@ -272,12 +352,13 @@ export default {
           "icon": "ti-alert"
         }],
       inImportPipeline: [{
-        "text": "Retrieving directory information",
+        "text": "Importing data...",
         "opened": true,
         "icon": "ti-alert"
-        }]
-      }
+      }]
     }
+  }
+
 }
 
 </script>
@@ -319,5 +400,31 @@ li {
 .center {
   margin: auto;
   width: 50%;
+}
+
+
+.loader {
+  border: 16px solid #f3f3f3; /* Light grey */
+  border-top: 16px solid #4fc6f9; /* Blue */
+  border-radius: 50%;
+  width: 120px;
+  height: 120px;
+  animation: spin 2s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+ul.anonymizedSummary{
+  display: inline-block;
+  text-align: left;
+}
+
+ul.anonymizedSummary li
+{
+  display: block;
+  padding-top: 5px;
 }
 </style>
