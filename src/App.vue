@@ -54,7 +54,7 @@
 
       <tab-content title="Finished" icon="ti-check">
         <p>Thanks for submitting your data.</p>
-        <p><a class="link">Download the manifest</a> for your records.</p>
+        <p><a class="link" v-on:click="downloadExcelManifest">Download the manifest</a> for your records.</p>
 
       </tab-content>
 
@@ -334,6 +334,17 @@ export default {
       var spanTag = footerRight.getElementsByTagName('span')[0];
       var button = spanTag.getElementsByClassName('wizard-btn')[0];
       button.innerText = text;
+    },
+    downloadExcelManifest: function(){
+      this.$http.get('/Collection/listManifest/csv').then(response=>{
+          var link = window.document.createElement("a");
+          link.setAttribute("href", "data:text/csv;charset=UTF-8," + response.body);
+          link.setAttribute("download", "manifest.csv");
+          link.click();
+        },
+        response=>{
+          alert("There was an error getting the manifest.")
+        });
     }
   },
   data: function() {
@@ -345,14 +356,13 @@ export default {
       studiesAnonymized: 4,
       seriesAnonymized: 10,
       currentPathIsDir: true,
-      fileSystem: [
-        {
+      fileSystem: [{
           "text": "Retrieving directory information",
           "opened": true,
           "icon": "ti-alert"
         }],
       inImportPipeline: [{
-        "text": "Importing data...",
+        "text": "Gathering data from import pipeline. Please wait a moment...",
         "opened": true,
         "icon": "ti-alert"
       }]
