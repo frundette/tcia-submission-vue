@@ -282,9 +282,19 @@ export default {
         var xml = parser.parseFromString(response.body, "text/xml");
         var dicomObjects = xml.getElementsByTagName("DicomObject");
 
+        var patientSet = new Set();
+        var seriesSet = new Set();
+        var studySet = new Set();
+
         for (var i= 0; i< dicomObjects.length; i++) {
-          console.log(dicomObjects[i].getAttribute('name'));
+          patientSet.add(dicomObjects[i].getAttribute('PatientID'));
+          studySet.add(dicomObjects[i].getAttribute('StudyDate'));
+          seriesSet.add(dicomObjects[i].getAttribute('PatientID') + dicomObjects[i].getAttribute('Series'));
         }
+
+        this.patientsAnonymized = Array.from(patientSet).length;
+        this.studiesAnonymized = Array.from(studySet).length;
+        this.seriesAnonymized = Array.from(seriesSet).length;
 
       }, response => {
         alert("There was a problem retrieving the anonymized list.");
@@ -352,9 +362,9 @@ export default {
       loading: false,
       serverSpace: "0",
       currentFileSystemPath: "/",
-      patientsAnonymized: 5,
-      studiesAnonymized: 4,
-      seriesAnonymized: 10,
+      patientsAnonymized: 0,
+      studiesAnonymized: 0,
+      seriesAnonymized: 0,
       currentPathIsDir: true,
       fileSystem: [{
           "text": "Retrieving directory information",
