@@ -23,8 +23,10 @@
       </tab-content>
 
       <tab-content title="Select Data" icon="ti-target" :before-change="anonymize">
-        <p>Now choose which Studies or Patients to anonymize </p>
-        <v-jstree :data="inImportPipeline" show-checkbox multiple></v-jstree>
+        <p>Choose which Studies or Patients to anonymize </p>
+        <div class="center">
+          <v-jstree :data="inImportPipeline" class="anonymize-tree" show-checkbox multiple></v-jstree>
+        </div>
         <div v-show="loading" class="center">
           <div class="loader"></div>
           <p>Anonymizing...</p>
@@ -422,6 +424,23 @@ li {
   width: 50%;
 }
 
+.tree-selected{
+  background: #4fc6f9 !important;
+}
+
+.anonymize-tree > .tree-children > .tree-node > .tree-selected{
+  background: none !important;
+}
+.anonymize-tree > .tree-children > .tree-node > .tree-children > .tree-node > .tree-selected{
+  background: none !important;
+}
+
+.anonymize-tree > .tree-children > .tree-node > .tree-hover{
+  background: none !important;
+}
+.anonymize-tree > .tree-children > .tree-node > .tree-children > .tree-node > .tree-hover{
+  background: none !important;
+}
 
 .loader {
   border: 16px solid #f3f3f3; /* Light grey */
