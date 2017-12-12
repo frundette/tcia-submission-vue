@@ -91,14 +91,49 @@ export default {
       this.updateNextButtonText("Import");
       return true;
     },
-    updateFileSystemTree: function(path){
-      this.$http.get('/Collection/listFiles?dir='+path).then(response => {
+    getSystemFileRoots: function(){
+      this.$http.get('/Collection/getFileSystemRoots').then(response=>{
+        console.log(response.body);
         var xml = parser.parseFromString(response.body, "text/xml");
-        var json = this.fileSystemXmlToJson(xml);
+        var json = this.rootsXmlToJson(xml);
+        console.log(json);
         this.fileSystem = json.children;
-      },response => {
-        alert("There was a problem retrieving directory information.");
+      }, response=>{
+        alert("Error retrieving the system file roots");
       });
+    },
+    updateFileSystemTree: function(path){
+
+      if (!path) {   // is this logic the same on windows?
+        this.getSystemFileRoots();
+      }
+      else {
+        this.$http.get('/Collection/listFiles?dir=' + path).then(response => {
+          var xml = parser.parseFromString(response.body, "text/xml");
+          var json = this.fileSystemXmlToJson(xml);
+          this.fileSystem = json.children;
+        }, response => {
+          alert("There was a problem retrieving directory information.");
+        });
+      }
+    },
+    rootsXmlToJson: function(xml){
+      /* <roots><root name="/" desc="null"/></roots> */
+
+      var obj = {};
+      obj["children"] = [];
+      var roots = xml.getElementsByTagName("root");
+
+      for (var i=0; i<roots.length; i++){
+        var rootObj = {};
+        rootObj["type"] = "dir";
+        rootObj["text"] = roots[i].getAttribute('name');
+        rootObj["path"] = roots[i].getAttribute('name');
+        rootObj["icon"] = "ti-folder";
+        obj["children"].push(rootObj);
+      }
+
+      return obj;
     },
     fileSystemXmlToJson: function(xml, parent=""){
 
@@ -268,7 +303,7 @@ export default {
     isAnonymizingFinished: function(){
 
       //TODO:  How will we know that the anonymization is complete?
-      //John is considering if there is another call he can provide.
+      //John will provide function to call.
 
       var millis = 3000;
       var date = Date.now();
