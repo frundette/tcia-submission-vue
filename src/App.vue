@@ -1,9 +1,10 @@
 <template>
   <div id="app">
-    <form-wizard  color="#4fc6f9">
+    <form-wizard  color="#4fc6f9" @on-change="onChange">
 
       <h2 slot="title">TCIA Submission Tool</h2>
 
+      <!-- Tab 0 -->
       <tab-content title="Configure" icon="ti-map" :before-change="importSubmissionTemplate">
         <p>Fill out <a class="link" href='/src/assets/tcia-submission-template.xlsx'>this Excel template</a> and save it on your computer.
           Our software will use this information to determine which Collection your patients belong in,
@@ -11,6 +12,7 @@
         <p>After filling out the template, import the file: <input type="file" accept=".xlsx" id="templateFile" /></p>
       </tab-content>
 
+      <!-- Tab 1 -->
       <tab-content title="Import Data" icon="ti-files" :before-change="copyIntoImportPipeline">
         <p>{{serverSpace}}</p>
         <p>Where is the DICOM data you’d like to submit?</p>
@@ -22,21 +24,23 @@
         <v-jstree :data="fileSystem" allow-batch  v-on:dblclick.native="directoryDoubleClick" @item-click="directoryItemClick"></v-jstree>
       </tab-content>
 
+      <!-- Tab 2 -->
       <tab-content title="Select Data" icon="ti-target" :before-change="anonymize">
-        <p>Choose which Studies or Patients to anonymize </p>
-        <div class="center">
-          <v-jstree :data="inImportPipeline" class="anonymize-tree" show-checkbox multiple></v-jstree>
+        <div v-show="loading === false">
+          <p>Choose which Studies or Patients to anonymize </p>
+          <div class="center">
+            <v-jstree :data="inImportPipeline" class="anonymize-tree" show-checkbox multiple></v-jstree>
+          </div>
         </div>
-        <div v-show="loading" class="center">
+        <div v-show="loading === true" class="center">
           <div class="loader"></div>
           <p>Anonymizing...</p>
         </div>
       </tab-content>
 
+      <!-- Tab 3 -->
       <tab-content title="Review" icon="ti-export" :before-change="transferToTCIA">
-        <p>Your data has been anonymized.</p>
-
-        <p>TODO: Show anonymization mapping.  JP to provide function to do this.</p>
+        <p>Your data has been anonymized. A mapping manifest has been downloaded for your reference.</p>
 
         <ul class="anonymizedSummary">
           <li>
@@ -54,10 +58,10 @@
         </ul>
       </tab-content>
 
+      <!-- Tab 4 -->
       <tab-content title="Finished" icon="ti-check">
         <p>Thanks for submitting your data.</p>
-        <p><a class="link" v-on:click="downloadExcelManifest">Download the manifest</a> for your records.</p>
-
+        <p><a class="link" v-on:click="downloadAnonymizedManifest">Download the manifest</a> for your records.</p>
       </tab-content>
 
     </form-wizard>
@@ -71,6 +75,34 @@
 export default {
   name: 'app',
   methods: {
+    onChange: function(fromTab, toTab) {
+
+      switch(toTab) {
+        case 0:  //Configure
+          this.updateNextButtonText("Next");
+          break;
+        case 1:  //Import Data
+          this.updateAvailableServerSpace();
+          this.updateFileSystemTree(this.currentFileSystemPath);
+          this.updateNextButtonText("Import");
+          break;
+        case 2:  //Select Data
+          this.updateImportPipelineTree();
+          this.updateNextButtonText("Anonymize");
+          break;
+        case 3:  //Review
+          //Get the list of images that have been anonymized
+          this.updateAnonymizationNumbers();
+          this.updateNextButtonText("Export");
+          break;
+        case 4:  //Finished
+          this.updateNextButtonText("Finished");
+          break;
+        default:
+          this.updateNextButtonText("Next");
+      }
+
+    },
     importSubmissionTemplate: function(){
       this.$http.get('/login/ajax?username=admin&password=tcia').then(response => {
         this.loggedIn = true;
@@ -78,17 +110,16 @@ export default {
         var fileFormData = new FormData();
         fileFormData.append('file', file);
         this.$http.post('/Collection', fileFormData).then(response =>{
-          var startingPath = this.currentFileSystemPath;
-          this.getAvailableServerSpace();
-          this.updateFileSystemTree(startingPath);
+          //var startingPath = this.currentFileSystemPath;
+          //this.getAvailableServerSpace();
+          //this.updateFileSystemTree(startingPath);
+          console.log("File submitted " + response.body);
         }, response => {
           alert("There was a problem importing the file.");
         })
       }, response => {
         alert("There was a problem communicating with CTP.");
       });
-
-      this.updateNextButtonText("Import");
       return true;
     },
     getSystemFileRoots: function(){
@@ -188,12 +219,10 @@ export default {
     copyIntoImportPipeline: function () {
       this.$http.get('/Collection/submitFile?file=' + this.currentFileSystemPath).then(response => {
         console.log("files submitted " + response.body);
-        this.updateImportPipelineTree();
+        //this.updateImportPipelineTree();
       }, response => {
         alert("There was a problem copying the files into the import pipeline.")
       });
-
-      this.updateNextButtonText('Anonymize');
       return true;
     },
     updateImportPipelineTree: function(){
@@ -253,7 +282,7 @@ export default {
     },
     anonymize: function(){
 
-      this.setLoading(true);
+      this.loading = true;
 
       //Get the selected items
       var pathsToAnonymize = [];
@@ -292,12 +321,9 @@ export default {
       while (this.isAnonymizingFinished() == false) {
         console.log("Still anonymizing...")
       }
-      this.setLoading(false);
 
-      //Get the list of images that have been anonymized
-      this.updateAnonymizationNumbers();
+      this.loading = false;
 
-      this.updateNextButtonText('Export');
       return true;
     },
     isAnonymizingFinished: function(){
@@ -344,8 +370,6 @@ export default {
       }, response => {
         alert("There was a problem exporting the files.")
       });
-
-      this.updateNextButtonText('Finished');
       return true;
     },
     directoryItemClick: function (node) {
@@ -359,7 +383,7 @@ export default {
     upDirectoryClick: function(){
       this.updateFileSystemTree(this.fileSystem[0].parent);
     },
-    getAvailableServerSpace: function () {
+    updateAvailableServerSpace: function () {
       // <space partition="D:\" available="434932" units="MB"/>
       this.$http.get('/Collection/getAvailableSpace').then(response => {
         var xml = parser.parseFromString(response.body, "text/xml");
@@ -382,16 +406,27 @@ export default {
       var button = spanTag.getElementsByClassName('wizard-btn')[0];
       button.innerText = text;
     },
-    downloadExcelManifest: function(){
+    downloadAnonymizedManifest: function(){
       this.$http.get('/Collection/listManifest/csv').then(response=>{
           var link = window.document.createElement("a");
           link.setAttribute("href", "data:text/csv;charset=UTF-8," + response.body);
-          link.setAttribute("download", "manifest.csv");
+          link.setAttribute("download", "anonymized_manifest.csv");
           link.click();
         },
         response=>{
-          alert("There was an error getting the manifest.")
+          alert("There was an error getting the anonymized manifest.");
         });
+    },
+    downloadMappingManifest: function(){
+      //TODO:  Confirm URL with JP
+      this.$http.get('/Collection/mappingManifest/csv').then(response =>{
+        var link = window.document.createElement("a");
+        link.setAttribute("href", "data:text/csv;charset=UTF-8," + response.body);
+        link.setAttribute("download", "mapping_manifest.csv");
+        link.click();
+      }, response =>{
+        alert("There was an error getting the mapping manifest.");
+      });
     }
   },
   data: function() {
