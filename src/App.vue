@@ -18,7 +18,7 @@
         <p>Where is the DICOM data you’d like to submit?</p>
         <div class="center">
           <div style="float:left; width:2em">
-            <button tabindex="-1" type="button" class="up-btn ti-arrow-up" v-on:click="upDirectoryClick">  Up </button>
+            <button type="button" class="action-btn ti-arrow-up" v-on:click="upDirectoryClick">  Up </button>
           </div>
         </div>
         <v-jstree :data="fileSystem" allow-batch  v-on:dblclick.native="directoryDoubleClick" @item-click="directoryItemClick"></v-jstree>
@@ -29,7 +29,10 @@
         <div v-show="loading === false">
           <p>Choose which Studies or Patients to anonymize </p>
           <div class="center">
-            <v-jstree :data="inImportPipeline" class="anonymize-tree" show-checkbox multiple></v-jstree>
+            <div style="float:left;">
+              <button type="button" class="action-btn" v-on:click="selectAllClick"> {{ selectButtontext }} </button>
+            </div>
+            <v-jstree :data="inImportPipeline" class="anonymize-tree" show-checkbox multiple wholeRow="true" allowBatch="true"></v-jstree>
           </div>
         </div>
         <div v-show="loading === true" class="center">
@@ -85,19 +88,23 @@ export default {
           this.updateAvailableServerSpace();
           this.updateFileSystemTree(this.currentFileSystemPath);
           this.updateNextButtonText("Import");
+          this.updateBackButtonText("Back");
           break;
         case 2:  //Select Data
           this.updateImportPipelineTree();
           this.updateNextButtonText("Anonymize");
+          this.updateBackButtonText("Import More Data");
           break;
         case 3:  //Review
           //Get the list of images that have been anonymized
           this.updateAnonymizationNumbers();
           this.updateNextButtonText("Export");
+          this.updateBackButtonText("Back");
           this.downloadMappingManifest();
           break;
         case 4:  //Finished
           this.updateNextButtonText("Finished");
+          this.updateBackButtonText("Back");
           break;
         default:
           this.updateNextButtonText("Next");
@@ -384,6 +391,30 @@ export default {
     upDirectoryClick: function(){
       this.updateFileSystemTree(this.fileSystem[0].parent);
     },
+    selectAllClick: function(event){
+      if (this.selectButtontext === "Deselect All") {
+        this.selectButtontext = "Select All";
+        for(var i in this.inImportPipeline){
+          var obj = this.inImportPipeline[i];
+          obj.selected = false;
+          for(var j in obj.children){
+            var child = obj.children[j];
+            child.selected = false;
+          }
+        }
+      }
+      else {
+        this.selectButtontext = "Deselect All";
+        for(var i in this.inImportPipeline){
+          var obj = this.inImportPipeline[i];
+          obj.selected = true;
+          for(var j in obj.children){
+            var child = obj.children[j];
+            child.selected = true;
+          }
+        }
+      }
+    },
     updateAvailableServerSpace: function () {
       // <space partition="D:\" available="434932" units="MB"/>
       this.$http.get('/Collection/getAvailableSpace').then(response => {
@@ -406,6 +437,15 @@ export default {
       var spanTag = footerRight.getElementsByTagName('span')[0];
       var button = spanTag.getElementsByClassName('wizard-btn')[0];
       button.innerText = text;
+    },
+    updateBackButtonText: function(text){
+      //change 'BACK' button text
+      var footerLeft = document.getElementsByClassName('wizard-footer-left')[0];
+      var spanTag = footerLeft.getElementsByTagName('span')[0];
+      if (spanTag) {
+        var button = spanTag.getElementsByClassName('wizard-btn')[0];
+        button.innerText = text;
+      }
     },
     downloadAnonymizedManifest: function(){
       this.$http.get('/Collection/listExportManifest/csv').then(response=>{
@@ -438,6 +478,7 @@ export default {
       studiesAnonymized: 0,
       seriesAnonymized: 0,
       currentPathIsDir: true,
+      selectButtontext: 'Deselect All',
       fileSystem: [{
           "text": "Retrieving directory information",
           "opened": true,
@@ -483,7 +524,7 @@ li {
   color: #FFDC00
 }
 
-.up-btn{
+.action-btn{
   background-color: rgb(79, 198, 249);
   border-color: rgb(79, 198, 249);
   color: white;
