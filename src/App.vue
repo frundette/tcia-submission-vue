@@ -94,6 +94,7 @@ export default {
           //Get the list of images that have been anonymized
           this.updateAnonymizationNumbers();
           this.updateNextButtonText("Export");
+          this.downloadMappingManifest();
           break;
         case 4:  //Finished
           this.updateNextButtonText("Finished");
@@ -407,7 +408,7 @@ export default {
       button.innerText = text;
     },
     downloadAnonymizedManifest: function(){
-      this.$http.get('/Collection/listManifest/csv').then(response=>{
+      this.$http.get('/Collection/listExportManifest/csv').then(response=>{
           var link = window.document.createElement("a");
           link.setAttribute("href", "data:text/csv;charset=UTF-8," + response.body);
           link.setAttribute("download", "anonymized_manifest.csv");
@@ -418,8 +419,7 @@ export default {
         });
     },
     downloadMappingManifest: function(){
-      //TODO:  Confirm URL with JP
-      this.$http.get('/Collection/mappingManifest/csv').then(response =>{
+      this.$http.get('/Collection/listLocalManifest/csv').then(response =>{
         var link = window.document.createElement("a");
         link.setAttribute("href", "data:text/csv;charset=UTF-8," + response.body);
         link.setAttribute("download", "mapping_manifest.csv");
