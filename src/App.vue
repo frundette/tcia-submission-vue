@@ -77,9 +77,15 @@
 
 export default {
   name: 'app',
+  beforeCreate() {
+    this.$http.get('/login/ajax?username=admin&password=tcia').then(response => {
+      this.loggedIn = true;
+    }, response=>{
+      alert("There was a problem communicating with CTP.");
+    });
+  },
   methods: {
     onChange: function(fromTab, toTab) {
-
       switch(toTab) {
         case 0:  //Configure
           this.updateNextButtonText("Next");
@@ -109,25 +115,21 @@ export default {
         default:
           this.updateNextButtonText("Next");
       }
-
     },
     importSubmissionTemplate: function(){
-      this.$http.get('/login/ajax?username=admin&password=tcia').then(response => {
-        this.loggedIn = true;
-        var file = document.getElementById('templateFile').files[0];
-        var fileFormData = new FormData();
-        fileFormData.append('file', file);
-        this.$http.post('/Collection', fileFormData).then(response =>{
-          //var startingPath = this.currentFileSystemPath;
-          //this.getAvailableServerSpace();
-          //this.updateFileSystemTree(startingPath);
-          console.log("File submitted " + response.body);
-        }, response => {
-          alert("There was a problem importing the file.");
-        })
+
+      var file = document.getElementById('templateFile').files[0];
+      var fileFormData = new FormData();
+      fileFormData.append('file', file);
+      this.$http.post('/Collection', fileFormData).then(response =>{
+        //var startingPath = this.currentFileSystemPath;
+        //this.getAvailableServerSpace();
+        //this.updateFileSystemTree(startingPath);
+        console.log("File submitted " + response.body);
       }, response => {
-        alert("There was a problem communicating with CTP.");
+        alert("There was a problem importing the file.");
       });
+
       return true;
     },
     getSystemFileRoots: function(){
@@ -292,6 +294,13 @@ export default {
 
       this.loading = true;
 
+      //first clear the manifest
+      this.$http.get('/Collection/clearManifest').then(response =>{
+        console.log('manifest cleared');
+      }, response => {
+        alert("There was an error clearing the manifest");
+      });
+
       //Get the selected items
       var pathsToAnonymize = [];
       //get each selected item from the tree view
@@ -325,9 +334,25 @@ export default {
         });
       }
 
+      //wait 1 second
+      var millis = 1000;
+      var date = Date.now();
+      var curDate = null;
+      do {
+        curDate = Date.now();
+      } while (curDate-date < millis);
+
       //Poll to see if everything selected has been anonymized
       while (this.isAnonymizingFinished() == false) {
-        console.log("Still anonymizing...")
+        console.log("Still anonymizing...");
+
+        //wait 1 second between polls.
+        var millis = 1000;
+        var date = Date.now();
+        var curDate = null;
+        do {
+          curDate = Date.now();
+        } while (curDate-date < millis);
       }
 
       this.loading = false;
@@ -336,17 +361,21 @@ export default {
     },
     isAnonymizingFinished: function(){
 
-      //TODO:  How will we know that the anonymization is complete?
-      //John will provide function to call.
+      this.$http.get('/Collection/getManifestStatus').then(response=>{
 
-      var millis = 3000;
-      var date = Date.now();
-      var curDate = null;
-      do {
-        curDate = Date.now();
-      } while (curDate-date < millis);
+        console.log(response.body);
+
+      //<?xml version="1.0" encoding="UTF-8"?>
+      //<Status currentManifestInstanceCount="0" currentQuarantineCount="0" queuedInstanceCount="3" startingQuarantineCount="0"></Status>
+
+      }, response=>{
+        alert ("Error getting the anonymization status");
+      });
+
 
       return true;
+
+
     },
     updateAnonymizationNumbers: function () {
       this.$http.get('Collection/listAnonymized').then(response => {
