@@ -1,6 +1,10 @@
 <template>
   <div id="app">
-    <form-wizard  color="#4fc6f9" @on-change="onChange">
+    <form-wizard @on-complete="onComplete"
+                 @on-loading="setLoading"
+                 @on-validate="handleValidation"
+                 @on-change="onChange"
+                 color="#4fc6f9">
 
       <h2 slot="title">TCIA Submission Tool</h2>
 
@@ -26,7 +30,7 @@
 
       <!-- Tab 2 -->
       <tab-content title="Select Data" icon="ti-target" :before-change="anonymize">
-        <div v-show="loading === false">
+        <div v-if="loadingWizard === false">
           <p>Choose which Studies or Patients to anonymize </p>
           <div class="center">
             <div style="float:left;">
@@ -34,10 +38,6 @@
             </div>
             <v-jstree :data="inImportPipeline" class="anonymize-tree" show-checkbox multiple wholeRow="true" allowBatch="true"></v-jstree>
           </div>
-        </div>
-        <div v-show="loading === true" class="center">
-          <div class="loader"></div>
-          <p>Anonymizing...</p>
         </div>
       </tab-content>
 
@@ -67,13 +67,14 @@
         <p><a class="link" v-on:click="downloadAnonymizedManifest">Download the manifest</a> for your records.</p>
       </tab-content>
 
+      <div class="loader" v-if="loadingWizard"></div>
     </form-wizard>
   </div>
 </template>
 
 
 <script>
-  var parser = new DOMParser()
+  var parser = new DOMParser();
 
 export default {
   name: 'app',
@@ -86,6 +87,8 @@ export default {
   },
   methods: {
     onChange: function(fromTab, toTab) {
+
+      console.log('onChange from:' + fromTab + " to:" + toTab);
       switch(toTab) {
         case 0:  //Configure
           this.updateNextButtonText("Next");
@@ -116,15 +119,21 @@ export default {
           this.updateNextButtonText("Next");
       }
     },
+    setLoading: function(value) {
+      console.log("loading: " + value);
+      this.loadingWizard = value;
+    },
+    onComplete: function(){
+      console.log("Complete");
+    },
+    handleValidation: function(isValid, tabIndex){
+      console.log('Tab: '+tabIndex+ ' valid: '+isValid)
+    },
     importSubmissionTemplate: function(){
-
       var file = document.getElementById('templateFile').files[0];
       var fileFormData = new FormData();
       fileFormData.append('file', file);
       this.$http.post('/Collection', fileFormData).then(response =>{
-        //var startingPath = this.currentFileSystemPath;
-        //this.getAvailableServerSpace();
-        //this.updateFileSystemTree(startingPath);
         console.log("File submitted " + response.body);
       }, response => {
         alert("There was a problem importing the file.");
@@ -292,8 +301,6 @@ export default {
     },
     anonymize: function(){
 
-      this.loading = true;
-
       //first clear the manifest
       this.$http.get('/Collection/clearManifest').then(response =>{
         console.log('manifest cleared');
@@ -310,7 +317,7 @@ export default {
           console.log('anonymize ' + patient.path);
           pathsToAnonymize.push(patient.path);
         }
-        else{
+        else if (patient.children){
           //check if any children are selected
           for(var j = 0; j < patient.children.length; j++){
             var studyDate = patient.children[j];
@@ -322,6 +329,7 @@ export default {
         }
       }
 
+      console.log("pathsToAnonymize:" + pathsToAnonymize.length)
       //Pass each selected path to the anonymizer function
       for (var k = 0; k < pathsToAnonymize.length; k++)
       {
@@ -334,48 +342,32 @@ export default {
         });
       }
 
-      //wait 1 second
-      var millis = 1000;
-      var date = Date.now();
-      var curDate = null;
-      do {
-        curDate = Date.now();
-      } while (curDate-date < millis);
 
-      //Poll to see if everything selected has been anonymized
-      while (this.isAnonymizingFinished() == false) {
-        console.log("Still anonymizing...");
+      return new Promise((resolve, reject) => {
+        var myhttp = this.$http;
 
-        //wait 1 second between polls.
-        var millis = 1000;
-        var date = Date.now();
-        var curDate = null;
-        do {
-          curDate = Date.now();
-        } while (curDate-date < millis);
-      }
+        var checkstatus = function(){
+          setTimeout(function(){
 
-      this.loading = false;
-
-      return true;
-    },
-    isAnonymizingFinished: function(){
-
-      this.$http.get('/Collection/getManifestStatus').then(response=>{
-
-        console.log(response.body);
-
-      //<?xml version="1.0" encoding="UTF-8"?>
-      //<Status currentManifestInstanceCount="0" currentQuarantineCount="0" queuedInstanceCount="3" startingQuarantineCount="0"></Status>
-
-      }, response=>{
-        alert ("Error getting the anonymization status");
-      });
-
-
-      return true;
-
-
+            myhttp.get('/Collection/getManifestStatus').then(response => {
+              console.log("getManifestStatus: " + response.body);
+              var xml = parser.parseFromString(response.body, "text/xml");
+              var status = xml.getElementsByTagName("Status")[0];
+              var currentManifestInstanceCount = status.getAttribute("currentManifestInstanceCount");
+              var currentQuarantineCount = status.getAttribute("currentQuarantineCount");
+              var queuedInstanceCount = status.getAttribute("queuedInstanceCount");
+              var startingQuarantineCount = status.getAttribute("startingQuarantineCount");
+              var complete = startingQuarantineCount + queuedInstanceCount == currentQuarantineCount + currentManifestInstanceCount;
+              console.log("anonymization complete: " + complete);
+              if (complete)
+                resolve(complete);
+              else
+                checkstatus();
+            })
+          }, 5000)
+        }
+        checkstatus();
+      })
     },
     updateAnonymizationNumbers: function () {
       this.$http.get('Collection/listAnonymized').then(response => {
@@ -457,9 +449,6 @@ export default {
         alert ("There was a problem finding the available server space.");
       });
     },
-    setLoading: function(value) {
-      this.loading = value
-    },
     updateNextButtonText: function(text){
       //change 'NEXT' button text
       var footerRight = document.getElementsByClassName('wizard-footer-right')[0];
@@ -500,7 +489,7 @@ export default {
   },
   data: function() {
     return {
-      loading: false,
+      loadingWizard: false,
       serverSpace: "0",
       currentFileSystemPath: "/",
       patientsAnonymized: 0,
@@ -589,6 +578,7 @@ li {
   width: 120px;
   height: 120px;
   animation: spin 2s linear infinite;
+  margin: auto;
 }
 
 @keyframes spin {
