@@ -18,14 +18,16 @@
 
       <!-- Tab 1 -->
       <tab-content title="Import Data" icon="ti-files" :before-change="copyIntoImportPipeline">
-        <p>{{serverSpace}}</p>
-        <p>Where is the DICOM data you’d like to submit?</p>
-        <div class="center">
-          <div style="float:left; width:2em">
-            <button type="button" class="action-btn ti-arrow-up" v-on:click="upDirectoryClick">  Up </button>
+        <div v-if="loadingWizard === false">
+          <p>{{serverSpace}}</p>
+          <p>Where is the DICOM data you’d like to submit?</p>
+          <div class="center">
+            <div style="float:left; width:2em">
+              <button type="button" class="action-btn ti-arrow-up" v-on:click="upDirectoryClick">  Up </button>
+            </div>
           </div>
+          <v-jstree :data="fileSystem" allow-batch  v-on:dblclick.native="directoryDoubleClick" @item-click="directoryItemClick"></v-jstree>
         </div>
-        <v-jstree :data="fileSystem" allow-batch  v-on:dblclick.native="directoryDoubleClick" @item-click="directoryItemClick"></v-jstree>
       </tab-content>
 
       <!-- Tab 2 -->
@@ -238,11 +240,31 @@ export default {
     copyIntoImportPipeline: function () {
       this.$http.get('/Collection/submitFile?file=' + this.currentFileSystemPath).then(response => {
         console.log("files submitted " + response.body);
-        //this.updateImportPipelineTree();
       }, response => {
         alert("There was a problem copying the files into the import pipeline.")
       });
-      return true;
+
+      return new Promise((resolve, reject) => {
+        var myhttp = this.$http;
+
+        var checkstatus = function(){
+          setTimeout(function(){
+            myhttp.get('/Collection/getImportStatus').then(response => {
+              console.log("getImportStatus: " + response.body);
+              var xml = parser.parseFromString(response.body, "text/xml");
+              var status = xml.getElementsByTagName("status")[0];
+              var queueSize = status.getAttribute("queueSize");
+              var complete = queueSize == 0;
+              console.log("import complete: " + complete);
+              if (complete)
+                resolve(complete);
+              else
+                checkstatus();
+            })
+          }, 3000)
+        }
+        checkstatus();
+      })
     },
     updateImportPipelineTree: function(){
       this.$http.get('/Collection/listImport').then(response => {
@@ -342,13 +364,11 @@ export default {
         });
       }
 
-
       return new Promise((resolve, reject) => {
         var myhttp = this.$http;
 
         var checkstatus = function(){
           setTimeout(function(){
-
             myhttp.get('/Collection/getManifestStatus').then(response => {
               console.log("getManifestStatus: " + response.body);
               var xml = parser.parseFromString(response.body, "text/xml");
