@@ -97,7 +97,10 @@ export default {
           break;
         case 1:  //Import Data
           this.updateAvailableServerSpace();
-          this.updateFileSystemTree(this.currentFileSystemPath);
+          if (this.currentPathIsDir === false)
+            this.updateFileSystemTree("/");
+          else
+            this.updateFileSystemTree(this.currentFileSystemPath);
           this.updateNextButtonText("Import");
           this.updateBackButtonText("Back");
           break;
