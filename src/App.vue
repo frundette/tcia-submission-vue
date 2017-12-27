@@ -78,6 +78,7 @@
 
 <script>
   var parser = new DOMParser();
+  import { saveAs } from 'filesaver.js-npm';
 
 export default {
   name: 'app',
@@ -526,17 +527,15 @@ export default {
         var siteNameElement = xml.getElementsByTagName("SiteName")[0];
         var siteNameValue = siteNameElement.getAttribute("value");
         var today = (new Date()).toISOString().substring(0, 10);
-        var filename = collectionValue + "_" + siteNameValue + "_" + today + ".csv";
+        var filename = collectionValue + "_" + siteNameValue + "_" + today + ".xlsx";
 
-        this.$http.get('/Collection/listExportManifest/csv').then(response=>{
-            var link = window.document.createElement("a");
-            link.setAttribute("href", "data:text/csv;charset=UTF-8," + response.body);
-            link.setAttribute("download", filename);
-            link.click();
-          },
-          response=>{
-            alert("There was an error getting the anonymized manifest.");
-          });
+        this.$http({method: 'GET', url: "/Collection/listExportManifest/xlsx",
+          headers: {'Content-Type': "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}, responseType: "arraybuffer"}).
+        then(response =>{
+          saveAs(new Blob([response.body],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}), filename);
+        }, response=>{
+          alert("There was an error getting the mapping manifest.");
+        });
 
       }, response=>{
         alert("There was an error geting the xml for the anonymized manifest.")
@@ -552,16 +551,15 @@ export default {
           var siteNameElement = xml.getElementsByTagName("SiteName")[0];
           var siteNameValue = siteNameElement.getAttribute("value");
           var today = (new Date()).toISOString().substring(0, 10);
-          var filename = collectionValue + "_" + siteNameValue + "_" + today + ".csv";
+          var filename = collectionValue + "_" + siteNameValue + "_" + today + ".xlsx";
 
-          this.$http.get('/Collection/listLocalManifest/csv').then(response =>{
-          var link = window.document.createElement("a");
-          link.setAttribute("href", "data:text/csv;charset=UTF-8," + response.body);
-          link.setAttribute("download", filename);
-          link.click();
-          }, response =>{
-            alert("There was an error getting the mapping manifest.");
-          });
+          this.$http({method: 'GET', url: "/Collection/listLocalManifest/xlsx",
+            headers: {'Content-Type': "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}, responseType: "arraybuffer"}).
+              then(response =>{
+              saveAs(new Blob([response.body],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}), filename);
+            }, response=>{
+              alert("There was an error getting the mapping manifest.");
+            });
 
       }, response=>{
         alert("There was an error geting the xml for the mapping manifest.")
