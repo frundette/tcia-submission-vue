@@ -45,22 +45,23 @@
 
       <!-- Tab 3 -->
       <tab-content title="Review" icon="ti-export" :before-change="transferToTCIA">
-        <p>Your data has been anonymized. A mapping manifest has been downloaded for your reference.</p>
-
-        <ul class="anonymizedSummary">
-          <li>
-            <div class="ti-user"> Patients Processed: {{patientsAnonymized}}</div>
-          </li>
-          <li>
-            <div class="ti-calendar"> Studies Processed: {{studiesAnonymized}}</div>
-          </li>
-          <li>
-            <div class="ti-package"> Series Processed: {{seriesAnonymized}}</div>
-          </li>
-          <li>
-            <div class="ti-na"><a target="_blank" class="link" href="/quarantines?p=1&s=2"> Quarantine Manager</a></div>
-          </li>
-        </ul>
+        <div v-if="loadingWizard === false">
+          <p>Your data has been anonymized. A mapping manifest has been downloaded for your reference.</p>
+          <ul class="anonymizedSummary">
+            <li>
+              <div class="ti-user"> Patients Processed: {{patientsAnonymized}}</div>
+            </li>
+            <li>
+              <div class="ti-calendar"> Studies Processed: {{studiesAnonymized}}</div>
+            </li>
+            <li>
+              <div class="ti-package"> Series Processed: {{seriesAnonymized}}</div>
+            </li>
+            <li>
+              <div class="ti-na"><a target="_blank" class="link" href="/quarantines?p=1&s=2"> Quarantine Manager</a></div>
+            </li>
+          </ul>
+        </div>
       </tab-content>
 
       <!-- Tab 4 -->
@@ -69,7 +70,7 @@
         <p><a class="link" v-on:click="downloadAnonymizedManifest">Download the manifest</a> for your records.</p>
       </tab-content>
 
-      <div class="loader" v-if="loadingWizard"></div>
+      <div class="loader" id="loader-8" v-if="loadingWizard">{{loadingMessage}}</div>
     </form-wizard>
   </div>
 </template>
@@ -101,17 +102,20 @@ export default {
             this.updateFileSystemTree("/");
           else
             this.updateFileSystemTree(this.currentFileSystemPath);
+          this.loadingMessage = "Importing";
           this.updateNextButtonText("Import");
           this.updateBackButtonText("Back");
           break;
         case 2:  //Select Data
           this.updateImportPipelineTree();
+          this.loadingMessage = "Anonymizing";
           this.updateNextButtonText("Anonymize");
           this.updateBackButtonText("Import More Data");
           break;
         case 3:  //Review
           //Get the list of images that have been anonymized
           this.updateAnonymizationNumbers();
+          this.loadingMessage = "Exporting";
           this.updateNextButtonText("Export");
           this.updateBackButtonText("Back");
           this.downloadMappingManifest();
@@ -264,7 +268,7 @@ export default {
               else
                 checkstatus();
             })
-          }, 3000)
+          }, 2000)
         }
         checkstatus();
       })
@@ -422,7 +426,32 @@ export default {
       }, response => {
         alert("There was a problem exporting the files.")
       });
-      return true;
+
+      return new Promise((resolve, reject) => {
+        var myhttp = this.$http;
+        var a = this;
+
+        var checkstatus = function(){
+          setTimeout(function(){
+            myhttp.get('/Collection/getExportQueueSize').then(response => {
+              console.log("getExportQueueSize: " + response.body);
+              var xml = parser.parseFromString(response.body, "text/xml");
+              var queue = xml.getElementsByTagName("queue")[0];
+              var queueSize = queue.getAttribute("size");
+              var complete = queueSize == 0;
+              console.log("export complete: " + complete);
+              if (complete)
+                resolve(complete);
+              else {
+                a.loadingMessage = "Exporting " + queueSize + " files";
+                checkstatus();
+              }
+            })
+          }, 5000)
+        }
+        checkstatus();
+      })
+
     },
     directoryItemClick: function (node) {
       this.currentFileSystemPath = node.model.path;
@@ -489,30 +518,67 @@ export default {
       }
     },
     downloadAnonymizedManifest: function(){
-      this.$http.get('/Collection/listExportManifest/csv').then(response=>{
-          var link = window.document.createElement("a");
-          link.setAttribute("href", "data:text/csv;charset=UTF-8," + response.body);
-          link.setAttribute("download", "anonymized_manifest.csv");
-          link.click();
-        },
-        response=>{
-          alert("There was an error getting the anonymized manifest.");
-        });
+      //get the name for the file
+      this.$http.get('/Collection/listExportManifest/xml').then(response=> {
+        var xml = parser.parseFromString(response.body, "text/xml");
+        var collectionElement = xml.getElementsByTagName("Collection")[0];
+        var collectionValue = collectionElement.getAttribute("value");
+        var siteNameElement = xml.getElementsByTagName("SiteName")[0];
+        var siteNameValue = siteNameElement.getAttribute("value");
+        var today = (new Date()).toISOString().substring(0, 10);
+        var filename = collectionValue + "_" + siteNameValue + "_" + today + ".csv";
+
+        this.$http.get('/Collection/listExportManifest/csv').then(response=>{
+            var link = window.document.createElement("a");
+            link.setAttribute("href", "data:text/csv;charset=UTF-8," + response.body);
+            link.setAttribute("download", filename);
+            link.click();
+          },
+          response=>{
+            alert("There was an error getting the anonymized manifest.");
+          });
+
+      }, response=>{
+        alert("There was an error geting the xml for the anonymized manifest.")
+      });
+
     },
     downloadMappingManifest: function(){
-      this.$http.get('/Collection/listLocalManifest/csv').then(response =>{
-        var link = window.document.createElement("a");
-        link.setAttribute("href", "data:text/csv;charset=UTF-8," + response.body);
-        link.setAttribute("download", "mapping_manifest.csv");
-        link.click();
-      }, response =>{
-        alert("There was an error getting the mapping manifest.");
+
+      this.$http.get('/Collection/listLocalManifest/xml').then(response=> {
+          var xml = parser.parseFromString(response.body, "text/xml");
+          var collectionElement = xml.getElementsByTagName("Collection")[0];
+          var collectionValue = collectionElement.getAttribute("value");
+          var siteNameElement = xml.getElementsByTagName("SiteName")[0];
+          var siteNameValue = siteNameElement.getAttribute("value");
+          var today = (new Date()).toISOString().substring(0, 10);
+          var filename = collectionValue + "_" + siteNameValue + "_" + today + ".csv";
+
+          this.$http.get('/Collection/listLocalManifest/csv').then(response =>{
+          var link = window.document.createElement("a");
+          link.setAttribute("href", "data:text/csv;charset=UTF-8," + response.body);
+          link.setAttribute("download", filename);
+          link.click();
+          }, response =>{
+            alert("There was an error getting the mapping manifest.");
+          });
+
+      }, response=>{
+        alert("There was an error geting the xml for the mapping manifest.")
+      });
+    },
+    exportmanifestToPI: function(){
+      this.$http.get('/Collection/exportManifest').then(response=>{
+        console.log("exportManifest: " + response.body);
+      }, response=>{
+        alert("There was an error exporting the manifest to the principal investigator.")
       });
     }
   },
   data: function() {
     return {
       loadingWizard: false,
+      loadingMessage: "",
       serverSpace: "0",
       currentFileSystemPath: "/",
       patientsAnonymized: 0,
@@ -594,9 +660,45 @@ li {
   background: none !important;
 }
 
-.loader {
-  border: 16px solid #f3f3f3; /* Light grey */
-  border-top: 16px solid #4fc6f9; /* Blue */
+.loader{
+  width: 100px;
+  height: 100px;
+  border-radius: 100%;
+  position: relative;
+  margin: 0 auto;
+}
+
+#loader-8:before{
+  content: "";
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  top: calc(50% - 10px);
+  left: 0px;
+  background-color: #3498db;
+  animation: rotatemove 1s infinite;
+}
+
+@keyframes rotatemove{
+  0%{
+    -webkit-transform: scale(1) translateX(0px);
+    -ms-transform: scale(1) translateX(0px);
+    -o-transform: scale(1) translateX(0px);
+    transform: scale(1) translateX(0px);
+  }
+
+  100%{
+    -webkit-transform: scale(2) translateX(45px);
+    -ms-transform: scale(2) translateX(45px);
+    -o-transform: scale(2) translateX(45px);
+    transform: scale(2) translateX(45px);
+  }
+}
+
+
+/*.loader {
+  border: 16px solid #f3f3f3; !* Light grey *!
+  border-top: 16px solid #4fc6f9; !* Blue *!
   border-radius: 50%;
   width: 120px;
   height: 120px;
@@ -607,7 +709,7 @@ li {
 @keyframes spin {
   0% { transform: rotate(0deg); }
   100% { transform: rotate(360deg); }
-}
+}*/
 
 ul.anonymizedSummary{
   display: inline-block;
